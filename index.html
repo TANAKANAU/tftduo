@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>TFTDUO 通話テスト</title>
+  <style>
+    :root{
+      --bg:#0f1216; --card:#151a20; --text:#e8eef6; --muted:#a8b3c4;
+      --accent:#ff4da6; --accent-2:#8a5cff;
+    }
+    html,body{height:100%}
+    body{
+      margin:0; background:radial-gradient(1200px 800px at 20% -10%, #1b2230 0%, #0f1216 60%) no-repeat,
+               linear-gradient(135deg, rgba(255,77,166,.08), rgba(138,92,255,.06));
+      color:var(--text); font-family: ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"Noto Sans JP",sans-serif;
+      display:grid; place-items:center;
+    }
+    .wrap{width:min(960px,92vw); padding:24px}
+    .card{
+      background:var(--card);
+      border:1px solid rgba(255,255,255,.06);
+      border-radius:16px; padding:32px 28px;
+      box-shadow: 0 10px 30px rgba(0,0,0,.35);
+      display:grid; gap:22px; text-align:center;
+    }
+    h1{margin:0; font-size:28px; letter-spacing:.04em}
+    .sub{color:var(--muted); font-size:14px; margin-top:-8px}
+    .btn{
+      appearance:none; border:0; cursor:pointer;
+      padding:14px 22px; font-weight:700; font-size:16px; border-radius:12px;
+      color:white; background:linear-gradient(135deg,var(--accent),var(--accent-2));
+      transition:transform .08s ease, filter .15s ease, box-shadow .15s ease;
+      box-shadow:0 8px 20px rgba(138,92,255,.25);
+      width:220px; justify-self:center;
+    }
+    .btn:hover{filter:brightness(1.05)}
+    .btn:active{transform:translateY(1px)}
+    .meta{display:grid; gap:10px; color:var(--muted); font-size:12px}
+    .badge{display:inline-block; padding:4px 8px; border-radius:999px; background:#1f2732; color:#b9c6d8; font-size:11px}
+    .row{display:flex; gap:10px; justify-content:center; flex-wrap:wrap}
+    .status{font-size:13px; color:#c9d6e6; min-height:1.3em}
+    a{color:#a7b8ff; text-decoration:none}
+    a:hover{text-decoration:underline}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div class="row">
+        <span class="badge">Beta</span>
+        <span class="badge">2人1部屋 / 定員2</span>
+        <span class="badge">自動で空き部屋に割当</span>
+      </div>
+      <h1>TFTDUO 通話テスト</h1>
+      <p class="sub">「開始」を押すと空いている部屋に自動入室します。満席なら次の部屋に送ります。</p>
+
+      <button id="joinBtn" class="btn">通話を開始</button>
+      <div id="status" class="status"></div>
+
+      <div class="meta">
+        <div>推奨: イヤホン使用・通信が安定した環境</div>
+        <div>カメラはプリジョイン画面で<strong>手動ON</strong>にしてください。</div>
+        <div>問題が出たら <a href="https://tftduo.daily.co/" target="_blank" rel="noopener">Dailyダッシュボード</a> で部屋の状態を確認</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Firebase SDK (v11) -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
+    import {
+      getDatabase, ref, runTransaction, onValue, set, serverTimestamp
+    } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-database.js";
+
+    // ====== 設定（必要に応じて変更）======
+    const firebaseConfig = {
+      apiKey: "AIzaSyCt64Pi_bdFXOH6QANCAWJgGcu6MdMbIHM",
+      authDomain: "tftduo.firebaseapp.com",
+      projectId: "tftduo",
+      storageBucket: "tftduo.firebasestorage.app",
+      messagingSenderId: "213056638933",
+      appId: "1:213056638933:web:875fcc0c2bd8c552b9b75c",
+      databaseURL: "https://tftduo-default-rtdb.firebaseio.com"
+    };
+
+    const DAILY_SUBDOMAIN = "tftduo";     // https://tftduo.daily.co
+    const ROOM_PREFIX     = "room";       // room01, room02, ...
+    const ROOM_COUNT      = 10;           // 用意した部屋数
+    const ROOM_CAPACITY   = 2;            // 定員
+    const HOLD_MS         = 5 * 60 * 1000; // 入室保持の上限(ミス終了対策: 5分)
+
+    // ====== 初期化 ======
+    const app = initializeApp(firebaseConfig);
+    const db  = getDatabase(app);
+    const statusEl = document.getElementById('status');
+    const joinBtn  = document.getElementById('joinBtn');
+
+    function log(msg){ statusEl.textContent = msg; }
+
+    // 部屋名リスト: room01..room10
+    const roomNames = Array.from({length: ROOM_COUNT}, (_,i) =>
+      ROOM_PREFIX + String(i+1).padStart(2,'0')
+    );
+
+    // 退室時に人数を減らすためのハンドル
+    let assignedRoom = null;
+
+    // 退室/リロード時にカウントを戻す
+    window.addEventListener('beforeunload', () => {
+      if(!assignedRoom) return;
+      const r = ref(db, `assign/${assignedRoom}`);
+      runTransaction(r, (cur) => {
+        if(!cur) return cur;
+        const now = Date.now();
+        // 自分のホールド分を1つ減らす
+        const cnt = typeof cur.count === 'number' ? cur.count : 0;
+        return { count: Math.max(0, cnt - 1), ts: now };
+      });
+    });
+
+    // 古い占有を掃除（5分以上前の記録はリセット）
+    async function pruneRoom(rName){
+      const r = ref(db, `assign/${rName}`);
+      return runTransaction(r, (cur) => {
+        const now = Date.now();
+        if(!cur) return cur;
+        const ts  = typeof cur.ts === 'number' ? cur.ts : 0;
+        if(now - ts > HOLD_MS){
+          return { count: 0, ts: now };
+        }
+        return cur;
+      });
+    }
+
+    // 空き部屋に割当（トランザクションで安全に2人まで）
+    async function assignRoom(){
+      for(const rName of roomNames){
+        await pruneRoom(rName);
+        const r = ref(db, `assign/${rName}`);
+        const res = await runTransaction(r, (cur) => {
+          const now = Date.now();
+          if(!cur) cur = { count: 0, ts: now };
+          const cnt = typeof cur.count === 'number' ? cur.count : 0;
+          if(cnt >= ROOM_CAPACITY){
+            // 満席 → 変更せず（コミットしない）
+            return;
+          }
+          return { count: cnt + 1, ts: now };
+        });
+
+        if(res.committed){
+          // 自分が保持するためにタイムスタンプを即時更新
+          await set(ref(db, `assign/${rName}/ts`), Date.now());
+          assignedRoom = rName;
+          return rName;
+        }
+      }
+      return null;
+    }
+
+    function openDaily(rName){
+      // プリジョインUIを使う（カメラ勝手起動を避ける）
+      const url = `https://${DAILY_SUBDOMAIN}.daily.co/${rName}`;
+      window.location.assign(url);
+    }
+
+    joinBtn.addEventListener('click', async () => {
+      joinBtn.disabled = true;
+      log("空き部屋を検索中…");
+      try{
+        const r = await assignRoom();
+        if(!r){
+          log("現在空き部屋がありません。少し待って再試行してください。");
+          joinBtn.disabled = false;
+          return;
+        }
+        log(`部屋に割当: ${r} へ移動します…`);
+        // DBにも「テスト書き込み」痕跡を残す（動作確認用）
+        await set(ref(db, `test/lastJoin`), { room:r, at: serverTimestamp() });
+        openDaily(r);
+      }catch(e){
+        console.error(e);
+        log("割当でエラーが発生しました。時間をおいて再試行してください。");
+        joinBtn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
