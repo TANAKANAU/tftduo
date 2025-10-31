@@ -95,19 +95,12 @@
 
   <script type="module">
     // --- 例外表示補助 ---
-    window.addEventListener('error', e=>{
-      const el=document.getElementById('error'); if(el) el.textContent=`ERR: ${e.message}`;
-    });
-    window.addEventListener('unhandledrejection', e=>{
-      const el=document.getElementById('error'); if(el) el.textContent=`REJ: ${e.reason?.message||e.reason}`;
-    });
+    window.addEventListener('error', e=>{const el=document.getElementById('error');if(el)el.textContent=`ERR: ${e.message}`;});
+    window.addEventListener('unhandledrejection', e=>{const el=document.getElementById('error');if(el)el.textContent=`REJ: ${e.reason?.message||e.reason}`;});
 
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
-    import { getAuth, signInAnonymously, onAuthStateChanged } 
-      from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
-    import {
-      getDatabase, ref, runTransaction, onDisconnect, onValue, get, set, update, serverTimestamp
-    } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-database.js";
+    import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
+    import { getDatabase, ref, set, get, onValue, onDisconnect, update, runTransaction, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-database.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyCt64Pi_bdFXOH6QANCAWJgGcu6MdMbIHM",
@@ -120,94 +113,97 @@
     };
 
     const DAILY_SUBDOMAIN = "tftduo";
-    const ROOM_PREFIX="room"; const ROOM_COUNT=10; const ROOM_CAPACITY=2; const HOLD_MS=5*60*1000;
+    const ROOM_PREFIX = "room";
+    const ROOM_COUNT = 10;
+    const ROOM_CAPACITY = 2;
+    const HOLD_MS = 5 * 60 * 1000;
+    const roomNames = Array.from({length: ROOM_COUNT}, (_,i)=>`${ROOM_PREFIX}${String(i+1).padStart(2,"0")}`);
 
-    const app=initializeApp(firebaseConfig);
-    const auth=getAuth(app); const db=getDatabase(app);
-    const $=(id)=>document.getElementById(id);
-    const log=(m)=>$("status").textContent=m;
-    const setErr=(m)=>$("error").textContent=m||"";
-    const joinBtn=$("joinBtn");
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getDatabase(app);
+    const $ = id => document.getElementById(id);
+    const log = m => $("status").textContent = m;
+    const setErr = m => $("error").textContent = m || "";
+    const joinBtn = $("joinBtn");
 
-    let myUid=null, assignedRoom=null;
-    onAuthStateChanged(auth,(u)=>{if(u)myUid=u.uid;});
-    async function ensureLogin(){if(!auth.currentUser)await signInAnonymously(auth);myUid=auth.currentUser.uid;}
-    function readProfile(){const n=$("name").value.trim();if(!n)throw new Error("名前を入力してください");return {name:n,gender:$("gender").value,desired:$("desired").value};}
-    async function enqueue(p){const r=ref(db,`queue/${myUid}`);await set(r,{...p,ts:serverTimestamp()});onDisconnect(r).remove();}
-    function mutual(a,b){return ((a.desired=="any"||a.desired==b.gender)&&(b.desired=="any"||b.desired==a.gender));}
-    async function lockPair(o){const id=[myUid,o].sort().join("_");const r=ref(db,`pair/locks/${id}`);const res=await runTransaction(r,(c)=>{if(c)return;return {a:myUid,b:o,ts:Date.now()};});return res.committed;}
-    async function findAndLockPartner(my){
-      const q=await get(ref(db,"queue"));const all=q.exists()?q.val():{};
-      for(const [u,v] of Object.entries(all)){if(u===myUid)continue;if(mutual(my,v)){const ok=await lockPair(u);if(ok)return u;}}
-      log("相手待ちです。もう一つの端末から参加してください。");
-      return new Promise(res=>{
-        const off=onValue(ref(db,"queue"),async(s)=>{
-          const cur=s.exists()?s.val():{};
-          for(const [u,v] of Object.entries(cur)){
-            if(u===myUid)continue;
-            if(mutual(my,v)){
-              const ok=await lockPair(u);
-              if(ok){off();res(u);return;}
-            }
-          }
+    let myUid = null, assignedRoom = null;
+    onAuthStateChanged(auth, (u)=>{ if(u) myUid = u.uid; });
+    async function ensureLogin(){ if(!auth.currentUser) await signInAnonymously(auth); myUid = auth.currentUser.uid; }
+    function readProfile(){ const n=$("name").value.trim(); if(!n) throw new Error("名前を入力してください"); return {name:n, gender:$("gender").value, desired:$("desired").value}; }
+    async function enqueue(p){ const r=ref(db,`queue/${myUid}`); await set(r,{...p, ts:serverTimestamp()}); onDisconnect(r).remove(); }
+    function mutual(a,b){ return ((a.desired=="any"||a.desired==b.gender)&&(b.desired=="any"||b.desired==a.gender)); }
+    async function lockPair(o){ const id=[myUid,o].sort().join("_"); const r=ref(db,`pair/locks/${id}`); const res=await runTransaction(r,c=>{if(c)return;return{a:myUid,b:o,ts:Date.now()};}); return res.committed; }
+    async function findAndLockPartner(my){ const q=await get(ref(db,"queue")); const all=q.exists()?q.val():{}; for(const [u,v] of Object.entries(all)){ if(u===myUid) continue; if(mutual(my,v)){ const ok=await lockPair(u); if(ok) return u; } } log("相手待ちです。もう一つの端末から参加してください。"); return new Promise(res=>{ const off=onValue(ref(db,"queue"),async s=>{ const cur=s.exists()?s.val():{}; for(const [u,v] of Object.entries(cur)){ if(u===myUid) continue; if(mutual(my,v)){ const ok=await lockPair(u); if(ok){ off(); res(u); return; } } } }); setTimeout(()=>{off();res(null);},60000); }); }
+    function waitLockForMe(){ return new Promise(res=>{ const locks=ref(db,"pair/locks"); const off=onValue(locks,s=>{ const all=s.exists()?s.val():{}; for(const [pid,r] of Object.entries(all)){ if(!r||!r.a||!r.b) continue; if(r.a===myUid||r.b===myUid){ const partner=(r.a===myUid)?r.b:r.a; off(); res({pairId:pid,partner}); return; } } }); setTimeout(()=>{off();res(null);},60000); }); }
+
+    // --- 部屋予約用（トランザクション） ---
+    async function assignRoomTx(){
+      for(const rName of roomNames){
+        const metaRef = ref(db, `rooms_meta/${rName}`);
+        const res = await runTransaction(metaRef, cur => {
+          const now = Date.now();
+          if(!cur) cur = { count: 0, ts: now };
+          const cnt = Number(cur.count||0);
+          if(cnt >= ROOM_CAPACITY) return;
+          return { count: cnt + 1, ts: now };
         });
-        setTimeout(()=>{off();res(null);},60000);
+        if(res.committed) return rName;
+      }
+      return null;
+    }
+    async function releaseRoomTx(roomName){
+      const metaRef = ref(db, `rooms_meta/${roomName}`);
+      await runTransaction(metaRef, cur => {
+        if(!cur) return cur;
+        const cnt = Number(cur.count||0);
+        return { count: Math.max(0,cnt-1), ts: Date.now() };
       });
     }
-    function waitLockForMe(){
-      return new Promise(res=>{
-        const locks=ref(db,"pair/locks");
-        const off=onValue(locks,(s)=>{
-          const all=s.exists()?s.val():{};
-          for(const [pid,r] of Object.entries(all)){
-            if(!r||!r.a||!r.b)continue;
-            if(r.a===myUid||r.b===myUid){
-              const partner=(r.a===myUid)?r.b:r.a;
-              off();res({pairId:pid,partner});return;
-            }
-          }
-        });
-        setTimeout(()=>{off();res(null);},60000);
-      });
-    }
-    async function pruneRoom(rn){const occ=ref(db,`rooms/${rn}/occupants`);const s=await get(occ);if(!s.exists())return;const now=Date.now();const upd={};Object.entries(s.val()||{}).forEach(([u,v])=>{if(now-(v.ts||0)>HOLD_MS)upd[u]=null;});if(Object.keys(upd).length)await update(occ,upd);}
-    async function assignRoom(){for(let i=0;i<ROOM_COUNT;i++){const rn=ROOM_PREFIX+String(i+1).padStart(2,"0");await pruneRoom(rn);const occ=ref(db,`rooms/${rn}/occupants`);const s=await get(occ);const c=s.exists()?Object.keys(s.val()||{}).length:0;if(c<ROOM_CAPACITY)return rn;}return null;}
-    async function joinRoom(p,r){await pruneRoom(r);const me=ref(db,`rooms/${r}/occupants/${myUid}`);await set(me,{name:p.name,gender:p.gender,ts:Date.now()});onDisconnect(me).remove();const l=ref(db,`rooms/${r}/occupants`);const s=await get(l);if(Object.keys(s.val()||{}).length>ROOM_CAPACITY){await set(me,null);return false;}assignedRoom=r;return true;}
-    async function waitAndEnter(r){const list=ref(db,`rooms/${r}/occupants`);const url=`https://${DAILY_SUBDOMAIN}.daily.co/${r}`;return new Promise((res,rej)=>{const off=onValue(list,(s)=>{const occ=Object.keys(s.val()||{});if(occ.length>=2){off();window.location.assign(url);res();}});setTimeout(()=>{off();rej(new Error("timeout"));},15000);});}
+
+    async function joinRoom(p,r){ const me=ref(db,`rooms/${r}/occupants/${myUid}`); await set(me,{name:p.name,gender:p.gender,ts:Date.now()}); onDisconnect(me).remove(); assignedRoom=r; return true; }
+    async function waitAndEnter(r){ const list=ref(db,`rooms/${r}/occupants`); const url=`https://${DAILY_SUBDOMAIN}.daily.co/${r}`; return new Promise((res,rej)=>{ const off=onValue(list,s=>{ const occ=Object.keys(s.val()||{}); if(occ.length>=2){ off(); window.location.assign(url); res(); } }); setTimeout(()=>{off();rej(new Error("timeout"));},15000); }); }
 
     joinBtn.addEventListener("click",async()=>{
       try{
-        setErr("");joinBtn.disabled=true;log("初期化中…");
+        setErr(""); joinBtn.disabled=true; log("初期化中…");
         await ensureLogin();
-        const p=readProfile();
-        await enqueue(p);
+        const p=readProfile(); await enqueue(p);
 
-        const tryLock=(async()=>{const partner=await findAndLockPartner(p);if(!partner)return null;const pid=[myUid,partner].sort().join("_");return {pairId:pid,partner};})();
+        const tryLock=(async()=>{const partner=await findAndLockPartner(p);if(!partner)return null;const pid=[myUid,partner].sort().join("_");return{pairId:pid,partner};})();
         const waitLock=waitLockForMe();
         let info=await Promise.race([tryLock,waitLock]);
         if(!info){const r1=await tryLock;info=r1?r1:(await waitLock);if(!info){joinBtn.disabled=false;return;}}
 
-        const {pairId,partner}=info;const sessionRef=ref(db,`pair/sessions/${pairId}`);
+        const {pairId,partner}=info; const sessionRef=ref(db,`pair/sessions/${pairId}`);
         let off=onValue(sessionRef,async(snap)=>{
-          const s=snap.val();if(!s||!s.room||assignedRoom)return;
+          const s=snap.val(); if(!s||!s.room||assignedRoom)return;
           const ok=await joinRoom(p,s.room);
-          if(!ok){setErr("入室失敗");return;}
-          try{await waitAndEnter(s.room);}catch(e){setErr("相手待ちでタイムアウト");await set(ref(db,`rooms/${s.room}/occupants/${myUid}`),null);joinBtn.disabled=false;}
-          finally{off&&off();off=null;}
+          if(!ok){ await releaseRoomTx(s.room); setErr("入室失敗"); return; }
+          try{ await waitAndEnter(s.room); }
+          catch(e){ setErr("相手待ちでタイムアウト"); await releaseRoomTx(s.room); joinBtn.disabled=false; }
+          finally{ off&&off(); off=null; }
         });
 
         const leader=myUid===pairId.split("_")[0];
         if(leader){
           log("空き部屋選定中…");
-          const room=await assignRoom();
-          if(!room){setErr("空き部屋なし");joinBtn.disabled=false;return;}
-          await set(sessionRef,{a:myUid,b:partner,room,ts:Date.now()});
+          const room=await assignRoomTx();
+          if(!room){ setErr("空き部屋なし"); joinBtn.disabled=false; return; }
+          log(`部屋予約: ${room} / セッション確定中…`);
+          try{
+            await set(sessionRef,{a:myUid,b:partner,room,ts:Date.now()});
+            log(`セッション確定: ${room} / 相手の入室待ち…`);
+          }catch(e){
+            await releaseRoomTx(room);
+            throw e;
+          }
         }
-      }catch(e){console.error(e);setErr(e.message||"エラー");joinBtn.disabled=false;}
+      }catch(e){ console.error(e); setErr(e.message||"エラー"); joinBtn.disabled=false; }
     });
 
-    window.addEventListener("beforeunload",()=>{if(assignedRoom&&myUid)set(ref(db,`rooms/${assignedRoom}/occupants/${myUid}`),null);});
-    (async()=>{try{await ensureLogin();}catch(e){setErr("初期化失敗");}})();
+    window.addEventListener("beforeunload",()=>{ if(assignedRoom&&myUid) set(ref(db,`rooms/${assignedRoom}/occupants/${myUid}`),null); });
+    (async()=>{ try{ await ensureLogin(); } catch(e){ setErr("初期化失敗"); } })();
   </script>
 </body>
 </html>
