@@ -72,7 +72,7 @@
 
       <div class="meta">
         <div>推奨: イヤホン使用・通信が安定した環境</div>
-        <div>カメラはプリジョイン画面で<strong>手動ON</strong>にしてください。</div>
+        <div><strong>初期設定がオフですが、カメラが自動で起動する場合がありますのでご注意ください。</strong></div>
         <div>Daily管理: <a href="https://tftduo.daily.co/" target="_blank" rel="noopener">https://tftduo.daily.co/</a></div>
       </div>
     </div>
@@ -84,10 +84,10 @@
     import { getAuth, signInAnonymously, onAuthStateChanged }
       from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
     import {
-      getDatabase, ref, runTransaction, onDisconnect, get, set, serverTimestamp, update
+      getDatabase, ref, runTransaction, onDisconnect, onValue, get, set, update, serverTimestamp
     } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-database.js";
 
-    // ====== Firebase ======
+    // ====== Firebase（tftduo本番）======
     const firebaseConfig = {
       apiKey: "AIzaSyCt64Pi_bdFXOH6QANCAWJgGcu6MdMbIHM",
       authDomain: "tftduo.firebaseapp.com",
@@ -101,9 +101,9 @@
     // ====== Daily固定部屋 ======
     const DAILY_SUBDOMAIN = "tftduo";        // https://tftduo.daily.co
     const ROOM_PREFIX     = "room";          // room01, room02, ...
-    const ROOM_COUNT      = 10;              // 用意した部屋数（Daily側で作成済みを想定）
+    const ROOM_COUNT      = 10;              // 用意した部屋数（Daily側に作成済み）
     const ROOM_CAPACITY   = 2;               // 定員
-    const HOLD_MS         = 5 * 60 * 1000;   // 占有の強制解放閾値
+    const HOLD_MS         = 5 * 60 * 1000;   // 放置掃除
 
     // ====== 初期化 ======
     const app = initializeApp(firebaseConfig);
@@ -116,24 +116,20 @@
     const joinBtn  = $("joinBtn");
 
     const roomNames = Array.from({length: ROOM_COUNT}, (_,i)=> ROOM_PREFIX + String(i+1).padStart(2,'0'));
-    let assignedRoom = null;
     let myUid = null;
+    let assignedRoom = null;
 
     const log = (m)=> statusEl.textContent = m;
     const setErr = (m)=> errorEl.textContent = m || "";
 
-    // ========== 認証とプレゼンス ==========
-    onAuthStateChanged(auth, async (user)=>{
-      if(!user) return;
-      myUid = user.uid;
-    });
+    onAuthStateChanged(auth, (user)=>{ if(user) myUid = user.uid; });
 
     async function ensureLogin(){
       if(!auth.currentUser) await signInAnonymously(auth);
       myUid = auth.currentUser.uid;
     }
 
-    // ========== 入力検証 ==========
+    // ====== 入力検証 ======
     function readProfile(){
       const name = $("name").value.trim();
       const gender = $("gender").value;
@@ -144,82 +140,120 @@
       return { name, gender, desired };
     }
 
-    // ========== マッチング（相互希望） ==========
-    // RTDB: /queue/{uid} = {name, gender, desired, ts}
+    // ====== 待機投入 ======
     async function enqueue(profile){
       const meRef = ref(db, `queue/${myUid}`);
       await set(meRef, { ...profile, ts: serverTimestamp() });
-      onDisconnect(meRef).remove(); // タブ閉じで待機票を自動削除
+      onDisconnect(meRef).remove(); // タブ閉じで自動削除
     }
 
-    async function tryFindMatch(my){
-      // 簡易: 全待機を1回読み、相互希望を満たす相手を探す
-      const snap = await get(ref(db, "queue"));
-      if(!snap.exists()) return null;
+    // ====== 相互希望チェック ======
+    function mutual(my, other){
+      const a = (my.desired === "any") || (my.desired === other.gender);
+      const b = (other.desired === "any") || (other.desired === my.gender);
+      return a && b;
+    }
 
-      const entries = Object.entries(snap.val() || {});
-      for(const [uid, v] of entries){
+    // ====== 相手探索＋ロック ======
+    async function findAndLockPartner(my){
+      // 1回スキャン
+      const qSnap = await get(ref(db, "queue"));
+      const all = qSnap.exists() ? qSnap.val() : {};
+      for(const [uid, v] of Object.entries(all)){
         if(uid === myUid) continue;
-        const aWants = my.desired === "any" || my.desired === v.gender;
-        const bWants = v.desired === "any" || v.desired === my.gender;
-        if(aWants && bWants) return { uid, peer: v };
+        if(mutual(my, v)){
+          const ok = await lockPair(uid);
+          if(ok) return uid;
+        }
       }
-      return null;
+      // 変更を購読し、入ってきたら再試行
+      log("相手待ちです。もう一つの端末から参加してください。");
+      return new Promise((resolve)=>{
+        const off = onValue(ref(db, "queue"), async (snap)=>{
+          const cur = snap.exists() ? snap.val() : {};
+          for(const [uid, v] of Object.entries(cur)){
+            if(uid === myUid) continue;
+            if(mutual(my, v)){
+              const ok = await lockPair(uid);
+              if(ok){ off(); resolve(uid); return; }
+            }
+          }
+        });
+        // 60秒で一旦解除（必要なら再実行）
+        setTimeout(()=>{ off(); resolve(null); }, 60000);
+      });
     }
 
+    // /pair/locks/{sorted} に1度だけ置く
     async function lockPair(otherUid){
-      // /pair/lock 下で2者を同時に確定（二重取り防止）
-      const lockRef = ref(db, `pair/lock/${myUid}_${otherUid}`);
+      const pairId = [myUid, otherUid].sort().join("_");
+      const lockRef = ref(db, `pair/locks/${pairId}`);
       const res = await runTransaction(lockRef, (cur)=>{
-        if(cur) return; // 既にロック済み
+        if(cur) return; // 既に誰かが確保
         return { a: myUid, b: otherUid, ts: Date.now() };
       });
       return res.committed;
     }
 
-    // ========== 部屋割当（在室者マップ方式） ==========
-    // /rooms/{roomName}/occupants/{uid} = {name, gender, ts}
+    // ====== 在室掃除 ======
     async function pruneRoom(roomName){
       const occRef = ref(db, `rooms/${roomName}/occupants`);
       const snap = await get(occRef);
       if(!snap.exists()) return;
       const now = Date.now();
       const updates = {};
-      Object.entries(snap.val()).forEach(([uid, rec])=>{
+      Object.entries(snap.val()||{}).forEach(([uid, rec])=>{
         const ts = typeof rec.ts === "number" ? rec.ts : 0;
-        if(now - ts > HOLD_MS) updates[uid] = null; // 期限切れを掃除
+        if(now - ts > HOLD_MS) updates[uid] = null;
       });
       if(Object.keys(updates).length) await update(occRef, updates);
     }
 
+    // ====== 空き部屋確保（リーダーのみ実行） ======
     async function assignRoom(profile){
       for(const rName of roomNames){
         await pruneRoom(rName);
         const occRef = ref(db, `rooms/${rName}/occupants`);
-
-        // 1) 現在人数を取得
         const snap = await get(occRef);
-        const occupants = snap.exists() ? Object.keys(snap.val()||{}) : [];
-        if(occupants.length >= ROOM_CAPACITY) continue;
+        const cnt = snap.exists() ? Object.keys(snap.val()||{}).length : 0;
+        if(cnt >= ROOM_CAPACITY) continue;
 
-        // 2) 自分の入室を書き込み（onDisconnectで確実解放）
-        await set(ref(db, `rooms/${rName}/occupants/${myUid}`), {
-          name: profile.name, gender: profile.gender, ts: Date.now()
-        });
-        onDisconnect(ref(db, `rooms/${rName}/occupants/${myUid}`)).remove();
-
-        // 3) 直後に再確認（競合対策）
-        const snap2 = await get(occRef);
-        const occ2 = Object.keys(snap2.val()||{});
-        if(occ2.length <= ROOM_CAPACITY){
-          assignedRoom = rName;
-          return rName;
-        } else {
-          // 定員オーバーになっていたら撤回
-          await set(ref(db, `rooms/${rName}/occupants/${myUid}`), null);
-        }
+        // 予約（仮入室は後続joinRoomで）
+        return rName;
       }
       return null;
+    }
+
+    // ====== 決まった部屋に実際に入室 ======
+    async function joinRoom(profile, roomName){
+      await pruneRoom(roomName);
+      const meOcc = ref(db, `rooms/${roomName}/occupants/${myUid}`);
+      await set(meOcc, { name: profile.name, gender: profile.gender, ts: Date.now() });
+      onDisconnect(meOcc).remove();
+
+      // 定員超なら撤回
+      const listRef = ref(db, `rooms/${roomName}/occupants`);
+      const snap = await get(listRef);
+      const count = snap.exists() ? Object.keys(snap.val()||{}).length : 0;
+      if(count > ROOM_CAPACITY){
+        await set(meOcc, null);
+        return false;
+      }
+      assignedRoom = roomName;
+      return true;
+    }
+
+    // ====== 2人揃ったら同時に遷移 ======
+    async function waitAndEnter(roomName){
+      const listRef = ref(db, `rooms/${roomName}/occupants`);
+      const url = `https://${DAILY_SUBDOMAIN}.daily.co/${roomName}`;
+      return new Promise((resolve, reject)=>{
+        const off = onValue(listRef, (snap)=>{
+          const occ = snap.exists() ? Object.keys(snap.val()||{}) : [];
+          if(occ.length >= 2){ off(); window.location.assign(url); resolve(); }
+        });
+        setTimeout(()=>{ off(); reject(new Error("timeout")); }, 15000);
+      });
     }
 
     function openDaily(roomName){
@@ -227,8 +261,8 @@
       window.location.assign(url);
     }
 
-    // ========== メインフロー ==========
-    joinBtn.addEventListener('click', async ()=>{
+    // ====== メインフロー ======
+    joinBtn.addEventListener("click", async ()=>{
       try{
         setErr("");
         joinBtn.disabled = true;
@@ -239,37 +273,44 @@
         log("待機に投入…");
         await enqueue(profile);
 
-        log("相手を探索中…");
-        const match = await tryFindMatch(profile);
-        if(!match){
-          log("相手待ちです。もう一つの端末から参加してください。");
+        // 相手探し＋ロック
+        const partner = await findAndLockPartner(profile);
+        if(!partner){
+          // タイムアウト。ボタン再有効化。
           joinBtn.disabled = false;
           return;
         }
 
-        // 二重確定防止
-        const locked = await lockPair(match.uid);
-        if(!locked){
-          log("競合が発生しました。再探索します。");
-          joinBtn.disabled = false;
-          return;
+        // セッションとリーダー判定
+        const pairId = [myUid, partner].sort().join("_");
+        const sessionRef = ref(db, `pair/sessions/${pairId}`);
+
+        // room決定を監視（両者共通）
+        let sessionOff = onValue(sessionRef, async (snap)=>{
+          const s = snap.val();
+          if(!s || !s.room || assignedRoom) return;
+          const ok = await joinRoom(profile, s.room);
+          if(!ok){ setErr("入室に失敗しました"); return; }
+          try{
+            await waitAndEnter(s.room); // 2人揃ってから遷移
+          }catch(e){
+            setErr("相手待ちでタイムアウトしました");
+            await set(ref(db, `rooms/${s.room}/occupants/${myUid}`), null);
+            joinBtn.disabled = false;
+          }finally{
+            sessionOff && sessionOff(); sessionOff = null;
+          }
+        });
+
+        // リーダーだけが部屋を選んで書く
+        const leader = myUid === pairId.split("_")[0];
+        if(leader){
+          log("空き部屋を選定中…");
+          const room = await assignRoom(profile);
+          if(!room){ setErr("空き部屋がありません"); joinBtn.disabled = false; return; }
+          await set(sessionRef, { a: myUid, b: partner, room, ts: Date.now() });
         }
 
-        // 待機票を双方削除（ベストエフォート）
-        await set(ref(db, `queue/${myUid}`), null);
-        await set(ref(db, `queue/${match.uid}`), null);
-
-        log("空き部屋に割当中…");
-        const r = await assignRoom(profile);
-        if(!r){
-          setErr("空き部屋がありません。少し待ってから再試行してください。");
-          joinBtn.disabled = false;
-          return;
-        }
-
-        log(`マッチ成立。部屋 ${r} に移動します…`);
-        await set(ref(db, `test/lastJoin`), { room:r, at: serverTimestamp(), a: myUid, b: match.uid });
-        openDaily(r);
       }catch(e){
         console.error(e);
         setErr(e.message || "エラーが発生しました");
@@ -277,15 +318,16 @@
       }
     });
 
-    // タブ離脱時に在室を削除（fail-safe。onDisconnectが基本動作）
-    window.addEventListener('beforeunload', ()=>{
+    // leave時のフェイルセーフ
+    window.addEventListener("beforeunload", ()=>{
       if(assignedRoom && myUid){
         set(ref(db, `rooms/${assignedRoom}/occupants/${myUid}`), null);
       }
     });
 
-    // 起動時ログイン
+    // 起動時サインイン
     (async()=>{ try{ await ensureLogin(); }catch(e){ setErr("初期化失敗"); } })();
   </script>
 </body>
 </html>
+
