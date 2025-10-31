@@ -5,43 +5,30 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>TFTDUO 通話テスト</title>
   <style>
-    :root{
-      --bg:#0f1216; --card:#151a20; --text:#e8eef6; --muted:#a8b3c4;
-      --accent:#ff4da6; --accent-2:#8a5cff;
-    }
+    :root{ --bg:#0f1216; --card:#151a20; --text:#e8eef6; --muted:#a8b3c4; --accent:#ff4da6; --accent-2:#8a5cff; }
     html,body{height:100%}
-    body{
-      margin:0; background:radial-gradient(1200px 800px at 20% -10%, #1b2230 0%, #0f1216 60%) no-repeat,
-               linear-gradient(135deg, rgba(255,77,166,.08), rgba(138,92,255,.06));
-      color:var(--text); font-family: ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"Noto Sans JP",sans-serif;
-      display:grid; place-items:center;
-    }
+    body{ margin:0; background:radial-gradient(1200px 800px at 20% -10%, #1b2230 0%, #0f1216 60%) no-repeat,
+          linear-gradient(135deg, rgba(255,77,166,.08), rgba(138,92,255,.06));
+          color:var(--text); font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"Noto Sans JP",sans-serif;
+          display:grid; place-items:center;}
     .wrap{width:min(960px,92vw); padding:24px}
-    .card{
-      background:var(--card);
-      border:1px solid rgba(255,255,255,.06);
-      border-radius:16px; padding:32px 28px;
-      box-shadow: 0 10px 30px rgba(0,0,0,.35);
-      display:grid; gap:22px; text-align:center;
-    }
+    .card{ background:var(--card); border:1px solid rgba(255,255,255,.06); border-radius:16px; padding:32px 28px;
+           box-shadow:0 10px 30px rgba(0,0,0,.35); display:grid; gap:18px; text-align:center; }
     h1{margin:0; font-size:28px; letter-spacing:.04em}
     .sub{color:var(--muted); font-size:14px; margin-top:-8px}
-    .btn{
-      appearance:none; border:0; cursor:pointer;
-      padding:14px 22px; font-weight:700; font-size:16px; border-radius:12px;
-      color:white; background:linear-gradient(135deg,var(--accent),var(--accent-2));
-      transition:transform .08s ease, filter .15s ease, box-shadow .15s ease;
-      box-shadow:0 8px 20px rgba(138,92,255,.25);
-      width:220px; justify-self:center;
-    }
-    .btn:hover{filter:brightness(1.05)}
-    .btn:active{transform:translateY(1px)}
-    .meta{display:grid; gap:10px; color:var(--muted); font-size:12px}
-    .badge{display:inline-block; padding:4px 8px; border-radius:999px; background:#1f2732; color:#b9c6d8; font-size:11px}
     .row{display:flex; gap:10px; justify-content:center; flex-wrap:wrap}
+    .field{display:grid; gap:6px}
+    input,select{padding:10px 12px; border-radius:10px; border:1px solid #2a3340; background:#0f141b; color:#e8eef6; min-width:180px}
+    .btn{appearance:none; border:0; cursor:pointer; padding:14px 22px; font-weight:700; font-size:16px; border-radius:12px;
+         color:white; background:linear-gradient(135deg,var(--accent),var(--accent-2));
+         transition:transform .08s ease, filter .15s ease, box-shadow .15s ease;
+         box-shadow:0 8px 20px rgba(138,92,255,.25); width:220px; justify-self:center;}
+    .btn:hover{filter:brightness(1.05)} .btn:active{transform:translateY(1px)}
+    .badge{display:inline-block; padding:4px 8px; border-radius:999px; background:#1f2732; color:#b9c6d8; font-size:11px}
     .status{font-size:13px; color:#c9d6e6; min-height:1.3em}
-    a{color:#a7b8ff; text-decoration:none}
-    a:hover{text-decoration:underline}
+    .meta{display:grid; gap:8px; color:var(--muted); font-size:12px}
+    a{color:#a7b8ff; text-decoration:none} a:hover{text-decoration:underline}
+    .err{color:#ff6b6b; font-size:12px; min-height:1.2em}
   </style>
 </head>
 <body>
@@ -50,18 +37,43 @@
       <div class="row">
         <span class="badge">Beta</span>
         <span class="badge">2人1部屋 / 定員2</span>
-        <span class="badge">自動で空き部屋に割当</span>
+        <span class="badge">性別マッチング</span>
       </div>
       <h1>TFTDUO 通話テスト</h1>
-      <p class="sub">「開始」を押すと空いている部屋に自動入室します。満席なら次の部屋に送ります。</p>
+      <p class="sub">「開始」で希望に合う相手と自動マッチ→空き部屋に入室。</p>
+
+      <div class="row">
+        <div class="field">
+          <label for="name">名前</label>
+          <input id="name" placeholder="例: TANAKA" maxlength="24"/>
+        </div>
+        <div class="field">
+          <label for="gender">自分の性別</label>
+          <select id="gender">
+            <option value="male">男性</option>
+            <option value="female">女性</option>
+            <option value="nonbinary">その他</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="desired">相手の希望</label>
+          <select id="desired">
+            <option value="any">男女どちらでも</option>
+            <option value="male">男性</option>
+            <option value="female">女性</option>
+            <option value="nonbinary">その他</option>
+          </select>
+        </div>
+      </div>
 
       <button id="joinBtn" class="btn">通話を開始</button>
       <div id="status" class="status"></div>
+      <div id="error" class="err"></div>
 
       <div class="meta">
         <div>推奨: イヤホン使用・通信が安定した環境</div>
         <div>カメラはプリジョイン画面で<strong>手動ON</strong>にしてください。</div>
-        <div>問題が出たら <a href="https://tftduo.daily.co/" target="_blank" rel="noopener">Dailyダッシュボード</a> で部屋の状態を確認</div>
+        <div>Daily管理: <a href="https://tftduo.daily.co/" target="_blank" rel="noopener">https://tftduo.daily.co/</a></div>
       </div>
     </div>
   </div>
@@ -69,11 +81,13 @@
   <!-- Firebase SDK (v11) -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
+    import { getAuth, signInAnonymously, onAuthStateChanged }
+      from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
     import {
-      getDatabase, ref, runTransaction, onValue, set, serverTimestamp
+      getDatabase, ref, runTransaction, onDisconnect, get, set, serverTimestamp, update
     } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-database.js";
 
-    // ====== 設定（必要に応じて変更）======
+    // ====== Firebase ======
     const firebaseConfig = {
       apiKey: "AIzaSyCt64Pi_bdFXOH6QANCAWJgGcu6MdMbIHM",
       authDomain: "tftduo.firebaseapp.com",
@@ -84,107 +98,194 @@
       databaseURL: "https://tftduo-default-rtdb.firebaseio.com"
     };
 
-    const DAILY_SUBDOMAIN = "tftduo";     // https://tftduo.daily.co
-    const ROOM_PREFIX     = "room";       // room01, room02, ...
-    const ROOM_COUNT      = 10;           // 用意した部屋数
-    const ROOM_CAPACITY   = 2;            // 定員
-    const HOLD_MS         = 5 * 60 * 1000; // 入室保持の上限(ミス終了対策: 5分)
+    // ====== Daily固定部屋 ======
+    const DAILY_SUBDOMAIN = "tftduo";        // https://tftduo.daily.co
+    const ROOM_PREFIX     = "room";          // room01, room02, ...
+    const ROOM_COUNT      = 10;              // 用意した部屋数（Daily側で作成済みを想定）
+    const ROOM_CAPACITY   = 2;               // 定員
+    const HOLD_MS         = 5 * 60 * 1000;   // 占有の強制解放閾値
 
     // ====== 初期化 ======
     const app = initializeApp(firebaseConfig);
-    const db  = getDatabase(app);
-    const statusEl = document.getElementById('status');
-    const joinBtn  = document.getElementById('joinBtn');
+    const auth = getAuth(app);
+    const db   = getDatabase(app);
 
-    function log(msg){ statusEl.textContent = msg; }
+    const $ = (id)=>document.getElementById(id);
+    const statusEl = $("status");
+    const errorEl  = $("error");
+    const joinBtn  = $("joinBtn");
 
-    // 部屋名リスト: room01..room10
-    const roomNames = Array.from({length: ROOM_COUNT}, (_,i) =>
-      ROOM_PREFIX + String(i+1).padStart(2,'0')
-    );
-
-    // 退室時に人数を減らすためのハンドル
+    const roomNames = Array.from({length: ROOM_COUNT}, (_,i)=> ROOM_PREFIX + String(i+1).padStart(2,'0'));
     let assignedRoom = null;
+    let myUid = null;
 
-    // 退室/リロード時にカウントを戻す
-    window.addEventListener('beforeunload', () => {
-      if(!assignedRoom) return;
-      const r = ref(db, `assign/${assignedRoom}`);
-      runTransaction(r, (cur) => {
-        if(!cur) return cur;
-        const now = Date.now();
-        // 自分のホールド分を1つ減らす
-        const cnt = typeof cur.count === 'number' ? cur.count : 0;
-        return { count: Math.max(0, cnt - 1), ts: now };
-      });
+    const log = (m)=> statusEl.textContent = m;
+    const setErr = (m)=> errorEl.textContent = m || "";
+
+    // ========== 認証とプレゼンス ==========
+    onAuthStateChanged(auth, async (user)=>{
+      if(!user) return;
+      myUid = user.uid;
     });
 
-    // 古い占有を掃除（5分以上前の記録はリセット）
-    async function pruneRoom(rName){
-      const r = ref(db, `assign/${rName}`);
-      return runTransaction(r, (cur) => {
-        const now = Date.now();
-        if(!cur) return cur;
-        const ts  = typeof cur.ts === 'number' ? cur.ts : 0;
-        if(now - ts > HOLD_MS){
-          return { count: 0, ts: now };
-        }
-        return cur;
-      });
+    async function ensureLogin(){
+      if(!auth.currentUser) await signInAnonymously(auth);
+      myUid = auth.currentUser.uid;
     }
 
-    // 空き部屋に割当（トランザクションで安全に2人まで）
-    async function assignRoom(){
+    // ========== 入力検証 ==========
+    function readProfile(){
+      const name = $("name").value.trim();
+      const gender = $("gender").value;
+      const desired = $("desired").value;
+      if(!name) throw new Error("名前を入力してください");
+      if(!["male","female","nonbinary"].includes(gender)) throw new Error("性別が不正です");
+      if(!["male","female","nonbinary","any"].includes(desired)) throw new Error("希望性別が不正です");
+      return { name, gender, desired };
+    }
+
+    // ========== マッチング（相互希望） ==========
+    // RTDB: /queue/{uid} = {name, gender, desired, ts}
+    async function enqueue(profile){
+      const meRef = ref(db, `queue/${myUid}`);
+      await set(meRef, { ...profile, ts: serverTimestamp() });
+      onDisconnect(meRef).remove(); // タブ閉じで待機票を自動削除
+    }
+
+    async function tryFindMatch(my){
+      // 簡易: 全待機を1回読み、相互希望を満たす相手を探す
+      const snap = await get(ref(db, "queue"));
+      if(!snap.exists()) return null;
+
+      const entries = Object.entries(snap.val() || {});
+      for(const [uid, v] of entries){
+        if(uid === myUid) continue;
+        const aWants = my.desired === "any" || my.desired === v.gender;
+        const bWants = v.desired === "any" || v.desired === my.gender;
+        if(aWants && bWants) return { uid, peer: v };
+      }
+      return null;
+    }
+
+    async function lockPair(otherUid){
+      // /pair/lock 下で2者を同時に確定（二重取り防止）
+      const lockRef = ref(db, `pair/lock/${myUid}_${otherUid}`);
+      const res = await runTransaction(lockRef, (cur)=>{
+        if(cur) return; // 既にロック済み
+        return { a: myUid, b: otherUid, ts: Date.now() };
+      });
+      return res.committed;
+    }
+
+    // ========== 部屋割当（在室者マップ方式） ==========
+    // /rooms/{roomName}/occupants/{uid} = {name, gender, ts}
+    async function pruneRoom(roomName){
+      const occRef = ref(db, `rooms/${roomName}/occupants`);
+      const snap = await get(occRef);
+      if(!snap.exists()) return;
+      const now = Date.now();
+      const updates = {};
+      Object.entries(snap.val()).forEach(([uid, rec])=>{
+        const ts = typeof rec.ts === "number" ? rec.ts : 0;
+        if(now - ts > HOLD_MS) updates[uid] = null; // 期限切れを掃除
+      });
+      if(Object.keys(updates).length) await update(occRef, updates);
+    }
+
+    async function assignRoom(profile){
       for(const rName of roomNames){
         await pruneRoom(rName);
-        const r = ref(db, `assign/${rName}`);
-        const res = await runTransaction(r, (cur) => {
-          const now = Date.now();
-          if(!cur) cur = { count: 0, ts: now };
-          const cnt = typeof cur.count === 'number' ? cur.count : 0;
-          if(cnt >= ROOM_CAPACITY){
-            // 満席 → 変更せず（コミットしない）
-            return;
-          }
-          return { count: cnt + 1, ts: now };
-        });
+        const occRef = ref(db, `rooms/${rName}/occupants`);
 
-        if(res.committed){
-          // 自分が保持するためにタイムスタンプを即時更新
-          await set(ref(db, `assign/${rName}/ts`), Date.now());
+        // 1) 現在人数を取得
+        const snap = await get(occRef);
+        const occupants = snap.exists() ? Object.keys(snap.val()||{}) : [];
+        if(occupants.length >= ROOM_CAPACITY) continue;
+
+        // 2) 自分の入室を書き込み（onDisconnectで確実解放）
+        await set(ref(db, `rooms/${rName}/occupants/${myUid}`), {
+          name: profile.name, gender: profile.gender, ts: Date.now()
+        });
+        onDisconnect(ref(db, `rooms/${rName}/occupants/${myUid}`)).remove();
+
+        // 3) 直後に再確認（競合対策）
+        const snap2 = await get(occRef);
+        const occ2 = Object.keys(snap2.val()||{});
+        if(occ2.length <= ROOM_CAPACITY){
           assignedRoom = rName;
           return rName;
+        } else {
+          // 定員オーバーになっていたら撤回
+          await set(ref(db, `rooms/${rName}/occupants/${myUid}`), null);
         }
       }
       return null;
     }
 
-    function openDaily(rName){
-      // プリジョインUIを使う（カメラ勝手起動を避ける）
-      const url = `https://${DAILY_SUBDOMAIN}.daily.co/${rName}`;
+    function openDaily(roomName){
+      const url = `https://${DAILY_SUBDOMAIN}.daily.co/${roomName}`;
       window.location.assign(url);
     }
 
-    joinBtn.addEventListener('click', async () => {
-      joinBtn.disabled = true;
-      log("空き部屋を検索中…");
+    // ========== メインフロー ==========
+    joinBtn.addEventListener('click', async ()=>{
       try{
-        const r = await assignRoom();
-        if(!r){
-          log("現在空き部屋がありません。少し待って再試行してください。");
+        setErr("");
+        joinBtn.disabled = true;
+        log("初期化中…");
+        await ensureLogin();
+        const profile = readProfile();
+
+        log("待機に投入…");
+        await enqueue(profile);
+
+        log("相手を探索中…");
+        const match = await tryFindMatch(profile);
+        if(!match){
+          log("相手待ちです。もう一つの端末から参加してください。");
           joinBtn.disabled = false;
           return;
         }
-        log(`部屋に割当: ${r} へ移動します…`);
-        // DBにも「テスト書き込み」痕跡を残す（動作確認用）
-        await set(ref(db, `test/lastJoin`), { room:r, at: serverTimestamp() });
+
+        // 二重確定防止
+        const locked = await lockPair(match.uid);
+        if(!locked){
+          log("競合が発生しました。再探索します。");
+          joinBtn.disabled = false;
+          return;
+        }
+
+        // 待機票を双方削除（ベストエフォート）
+        await set(ref(db, `queue/${myUid}`), null);
+        await set(ref(db, `queue/${match.uid}`), null);
+
+        log("空き部屋に割当中…");
+        const r = await assignRoom(profile);
+        if(!r){
+          setErr("空き部屋がありません。少し待ってから再試行してください。");
+          joinBtn.disabled = false;
+          return;
+        }
+
+        log(`マッチ成立。部屋 ${r} に移動します…`);
+        await set(ref(db, `test/lastJoin`), { room:r, at: serverTimestamp(), a: myUid, b: match.uid });
         openDaily(r);
       }catch(e){
         console.error(e);
-        log("割当でエラーが発生しました。時間をおいて再試行してください。");
+        setErr(e.message || "エラーが発生しました");
         joinBtn.disabled = false;
       }
     });
+
+    // タブ離脱時に在室を削除（fail-safe。onDisconnectが基本動作）
+    window.addEventListener('beforeunload', ()=>{
+      if(assignedRoom && myUid){
+        set(ref(db, `rooms/${assignedRoom}/occupants/${myUid}`), null);
+      }
+    });
+
+    // 起動時ログイン
+    (async()=>{ try{ await ensureLogin(); }catch(e){ setErr("初期化失敗"); } })();
   </script>
 </body>
 </html>
