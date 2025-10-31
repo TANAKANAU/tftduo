@@ -7,22 +7,37 @@
   <style>
     :root{ --bg:#0f1216; --card:#151a20; --text:#e8eef6; --muted:#a8b3c4; --accent:#ff4da6; --accent-2:#8a5cff; }
     html,body{height:100%}
-    body{ margin:0; background:radial-gradient(1200px 800px at 20% -10%, #1b2230 0%, #0f1216 60%) no-repeat,
-          linear-gradient(135deg, rgba(255,77,166,.08), rgba(138,92,255,.06));
-          color:var(--text); font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"Noto Sans JP",sans-serif;
-          display:grid; place-items:center;}
+    body{
+      margin:0;
+      background:radial-gradient(1200px 800px at 20% -10%, #1b2230 0%, #0f1216 60%) no-repeat,
+      linear-gradient(135deg, rgba(255,77,166,.08), rgba(138,92,255,.06));
+      color:var(--text);
+      font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"Noto Sans JP",sans-serif;
+      display:grid; place-items:center;
+    }
     .wrap{width:min(960px,92vw); padding:24px}
-    .card{ background:var(--card); border:1px solid rgba(255,255,255,.06); border-radius:16px; padding:32px 28px;
-           box-shadow:0 10px 30px rgba(0,0,0,.35); display:grid; gap:18px; text-align:center; }
+    .card{
+      background:var(--card); border:1px solid rgba(255,255,255,.06); border-radius:16px;
+      padding:32px 28px; box-shadow:0 10px 30px rgba(0,0,0,.35);
+      display:grid; gap:18px; text-align:center;
+    }
     h1{margin:0; font-size:28px; letter-spacing:.04em}
     .sub{color:var(--muted); font-size:14px; margin-top:-8px}
     .row{display:flex; gap:10px; justify-content:center; flex-wrap:wrap}
     .field{display:grid; gap:6px}
-    input,select{padding:10px 12px; border-radius:10px; border:1px solid #2a3340; background:#0f141b; color:#e8eef6; min-width:180px}
-    .btn{appearance:none; border:0; cursor:pointer; padding:14px 22px; font-weight:700; font-size:16px; border-radius:12px;
-         color:white; background:linear-gradient(135deg,var(--accent),var(--accent-2));
-         transition:transform .08s ease, filter .15s ease, box-shadow .15s ease;
-         box-shadow:0 8px 20px rgba(138,92,255,.25); width:220px; justify-self:center;}
+    input,select{
+      padding:10px 12px; border-radius:10px; border:1px solid #2a3340;
+      background:#0f141b; color:#e8eef6; min-width:180px;
+    }
+    .btn{
+      appearance:none; border:0; cursor:pointer; padding:14px 22px;
+      font-weight:700; font-size:16px; border-radius:12px;
+      color:white;
+      background:linear-gradient(135deg,var(--accent),var(--accent-2));
+      transition:transform .08s ease, filter .15s ease, box-shadow .15s ease;
+      box-shadow:0 8px 20px rgba(138,92,255,.25);
+      width:220px; justify-self:center;
+    }
     .btn:hover{filter:brightness(1.05)} .btn:active{transform:translateY(1px)}
     .badge{display:inline-block; padding:4px 8px; border-radius:999px; background:#1f2732; color:#b9c6d8; font-size:11px}
     .status{font-size:13px; color:#c9d6e6; min-height:1.3em}
@@ -87,7 +102,6 @@
       getDatabase, ref, runTransaction, onDisconnect, onValue, get, set, update, serverTimestamp
     } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-database.js";
 
-    // ====== Firebase（tftduo本番）======
     const firebaseConfig = {
       apiKey: "AIzaSyCt64Pi_bdFXOH6QANCAWJgGcu6MdMbIHM",
       authDomain: "tftduo.firebaseapp.com",
@@ -98,30 +112,22 @@
       databaseURL: "https://tftduo-default-rtdb.firebaseio.com"
     };
 
-    // ====== Daily固定部屋 ======
-    const DAILY_SUBDOMAIN = "tftduo";        // https://tftduo.daily.co
-    const ROOM_PREFIX     = "room";          // room01, room02, ...
-    const ROOM_COUNT      = 10;              // 用意した部屋数（Daily側に作成済み）
-    const ROOM_CAPACITY   = 2;               // 定員
-    const HOLD_MS         = 5 * 60 * 1000;   // 放置掃除
+    const DAILY_SUBDOMAIN = "tftduo";
+    const ROOM_PREFIX = "room";
+    const ROOM_COUNT = 10;
+    const ROOM_CAPACITY = 2;
+    const HOLD_MS = 5 * 60 * 1000;
 
-    // ====== 初期化 ======
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
-    const db   = getDatabase(app);
-
+    const db = getDatabase(app);
     const $ = (id)=>document.getElementById(id);
-    const statusEl = $("status");
-    const errorEl  = $("error");
-    const joinBtn  = $("joinBtn");
+    const log = (m)=> $("status").textContent = m;
+    const setErr = (m)=> $("error").textContent = m || "";
+    const joinBtn = $("joinBtn");
 
     const roomNames = Array.from({length: ROOM_COUNT}, (_,i)=> ROOM_PREFIX + String(i+1).padStart(2,'0'));
-    let myUid = null;
-    let assignedRoom = null;
-
-    const log = (m)=> statusEl.textContent = m;
-    const setErr = (m)=> errorEl.textContent = m || "";
-
+    let myUid = null, assignedRoom = null;
     onAuthStateChanged(auth, (user)=>{ if(user) myUid = user.uid; });
 
     async function ensureLogin(){
@@ -129,34 +135,34 @@
       myUid = auth.currentUser.uid;
     }
 
-    // ====== 入力検証 ======
     function readProfile(){
       const name = $("name").value.trim();
       const gender = $("gender").value;
       const desired = $("desired").value;
       if(!name) throw new Error("名前を入力してください");
-      if(!["male","female","nonbinary"].includes(gender)) throw new Error("性別が不正です");
-      if(!["male","female","nonbinary","any"].includes(desired)) throw new Error("希望性別が不正です");
       return { name, gender, desired };
     }
 
-    // ====== 待機投入 ======
     async function enqueue(profile){
       const meRef = ref(db, `queue/${myUid}`);
       await set(meRef, { ...profile, ts: serverTimestamp() });
-      onDisconnect(meRef).remove(); // タブ閉じで自動削除
+      onDisconnect(meRef).remove();
     }
 
-    // ====== 相互希望チェック ======
     function mutual(my, other){
       const a = (my.desired === "any") || (my.desired === other.gender);
       const b = (other.desired === "any") || (other.desired === my.gender);
       return a && b;
     }
 
-    // ====== 相手探索＋ロック ======
+    async function lockPair(otherUid){
+      const pairId = [myUid, otherUid].sort().join("_");
+      const lockRef = ref(db, `pair/locks/${pairId}`);
+      const res = await runTransaction(lockRef, (cur)=>{ if(cur) return; return { a: myUid, b: otherUid, ts: Date.now() }; });
+      return res.committed;
+    }
+
     async function findAndLockPartner(my){
-      // 1回スキャン
       const qSnap = await get(ref(db, "queue"));
       const all = qSnap.exists() ? qSnap.val() : {};
       for(const [uid, v] of Object.entries(all)){
@@ -166,7 +172,6 @@
           if(ok) return uid;
         }
       }
-      // 変更を購読し、入ってきたら再試行
       log("相手待ちです。もう一つの端末から参加してください。");
       return new Promise((resolve)=>{
         const off = onValue(ref(db, "queue"), async (snap)=>{
@@ -179,155 +184,29 @@
             }
           }
         });
-        // 60秒で一旦解除（必要なら再実行）
         setTimeout(()=>{ off(); resolve(null); }, 60000);
       });
     }
 
-    // /pair/locks/{sorted} に1度だけ置く
-    async function lockPair(otherUid){
-      const pairId = [myUid, otherUid].sort().join("_");
-      const lockRef = ref(db, `pair/locks/${pairId}`);
-      const res = await runTransaction(lockRef, (cur)=>{
-        if(cur) return; // 既に誰かが確保
-        return { a: myUid, b: otherUid, ts: Date.now() };
-      });
-      return res.committed;
-    }
-
-    // ====== 在室掃除 ======
-    async function pruneRoom(roomName){
-      const occRef = ref(db, `rooms/${roomName}/occupants`);
-      const snap = await get(occRef);
-      if(!snap.exists()) return;
-      const now = Date.now();
-      const updates = {};
-      Object.entries(snap.val()||{}).forEach(([uid, rec])=>{
-        const ts = typeof rec.ts === "number" ? rec.ts : 0;
-        if(now - ts > HOLD_MS) updates[uid] = null;
-      });
-      if(Object.keys(updates).length) await update(occRef, updates);
-    }
-
-    // ====== 空き部屋確保（リーダーのみ実行） ======
-    async function assignRoom(profile){
-      for(const rName of roomNames){
-        await pruneRoom(rName);
-        const occRef = ref(db, `rooms/${rName}/occupants`);
-        const snap = await get(occRef);
-        const cnt = snap.exists() ? Object.keys(snap.val()||{}).length : 0;
-        if(cnt >= ROOM_CAPACITY) continue;
-
-        // 予約（仮入室は後続joinRoomで）
-        return rName;
-      }
-      return null;
-    }
-
-    // ====== 決まった部屋に実際に入室 ======
-    async function joinRoom(profile, roomName){
-      await pruneRoom(roomName);
-      const meOcc = ref(db, `rooms/${roomName}/occupants/${myUid}`);
-      await set(meOcc, { name: profile.name, gender: profile.gender, ts: Date.now() });
-      onDisconnect(meOcc).remove();
-
-      // 定員超なら撤回
-      const listRef = ref(db, `rooms/${roomName}/occupants`);
-      const snap = await get(listRef);
-      const count = snap.exists() ? Object.keys(snap.val()||{}).length : 0;
-      if(count > ROOM_CAPACITY){
-        await set(meOcc, null);
-        return false;
-      }
-      assignedRoom = roomName;
-      return true;
-    }
-
-    // ====== 2人揃ったら同時に遷移 ======
-    async function waitAndEnter(roomName){
-      const listRef = ref(db, `rooms/${roomName}/occupants`);
-      const url = `https://${DAILY_SUBDOMAIN}.daily.co/${roomName}`;
-      return new Promise((resolve, reject)=>{
-        const off = onValue(listRef, (snap)=>{
-          const occ = snap.exists() ? Object.keys(snap.val()||{}) : [];
-          if(occ.length >= 2){ off(); window.location.assign(url); resolve(); }
-        });
-        setTimeout(()=>{ off(); reject(new Error("timeout")); }, 15000);
-      });
-    }
-
-    function openDaily(roomName){
-      const url = `https://${DAILY_SUBDOMAIN}.daily.co/${roomName}`;
-      window.location.assign(url);
-    }
-
-    // ====== メインフロー ======
-    joinBtn.addEventListener("click", async ()=>{
-      try{
-        setErr("");
-        joinBtn.disabled = true;
-        log("初期化中…");
-        await ensureLogin();
-        const profile = readProfile();
-
-        log("待機に投入…");
-        await enqueue(profile);
-
-        // 相手探し＋ロック
-        const partner = await findAndLockPartner(profile);
-        if(!partner){
-          // タイムアウト。ボタン再有効化。
-          joinBtn.disabled = false;
-          return;
-        }
-
-        // セッションとリーダー判定
-        const pairId = [myUid, partner].sort().join("_");
-        const sessionRef = ref(db, `pair/sessions/${pairId}`);
-
-        // room決定を監視（両者共通）
-        let sessionOff = onValue(sessionRef, async (snap)=>{
-          const s = snap.val();
-          if(!s || !s.room || assignedRoom) return;
-          const ok = await joinRoom(profile, s.room);
-          if(!ok){ setErr("入室に失敗しました"); return; }
-          try{
-            await waitAndEnter(s.room); // 2人揃ってから遷移
-          }catch(e){
-            setErr("相手待ちでタイムアウトしました");
-            await set(ref(db, `rooms/${s.room}/occupants/${myUid}`), null);
-            joinBtn.disabled = false;
-          }finally{
-            sessionOff && sessionOff(); sessionOff = null;
+    // 🔹 自分を含むロックを監視
+    function waitLockForMe(){
+      return new Promise((resolve)=>{
+        const locksRef = ref(db, "pair/locks");
+        const off = onValue(locksRef, (snap)=>{
+          const all = snap.exists() ? snap.val() : {};
+          for(const [pairId, rec] of Object.entries(all)){
+            if(!rec || !rec.a || !rec.b) continue;
+            if(rec.a === myUid || rec.b === myUid){
+              const partner = (rec.a === myUid) ? rec.b : rec.a;
+              off();
+              resolve({ pairId, partner });
+              return;
+            }
           }
         });
+        setTimeout(()=>{ off(); resolve(null); }, 60000);
+      });
+    }
 
-        // リーダーだけが部屋を選んで書く
-        const leader = myUid === pairId.split("_")[0];
-        if(leader){
-          log("空き部屋を選定中…");
-          const room = await assignRoom(profile);
-          if(!room){ setErr("空き部屋がありません"); joinBtn.disabled = false; return; }
-          await set(sessionRef, { a: myUid, b: partner, room, ts: Date.now() });
-        }
-
-      }catch(e){
-        console.error(e);
-        setErr(e.message || "エラーが発生しました");
-        joinBtn.disabled = false;
-      }
-    });
-
-    // leave時のフェイルセーフ
-    window.addEventListener("beforeunload", ()=>{
-      if(assignedRoom && myUid){
-        set(ref(db, `rooms/${assignedRoom}/occupants/${myUid}`), null);
-      }
-    });
-
-    // 起動時サインイン
-    (async()=>{ try{ await ensureLogin(); }catch(e){ setErr("初期化失敗"); } })();
-  </script>
-</body>
-</html>
-
+    async function pruneRoom(room){
+      const occRef = ref(db, `rooms/${room}/occupants`);
